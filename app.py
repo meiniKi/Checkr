@@ -96,17 +96,18 @@ class App():
             self.store_config()
 
     def annotate(self, original_txt, new_txt):
+        fg = "#2a2b36"
         original_tokens = original_txt.strip().split()
         modified_tokens = new_txt.strip().split()
         matcher = SequenceMatcher(None, original_tokens, modified_tokens)
         annotated_list = []
         for tag, i1, i2, j1, j2 in matcher.get_opcodes():
             if tag == 'replace':
-                annotated_list.append((" ".join(modified_tokens[j1:j2]), ""))
+                annotated_list.append((" ".join(modified_tokens[j1:j2]), "", fg))
             elif tag == 'delete':
                 annotated_list.append(("", ""))
             elif tag == 'insert':
-                annotated_list.append((" ".join(modified_tokens[j1:j2]), ""))
+                annotated_list.append((" ".join(modified_tokens[j1:j2]), "", fg))
             else:
                 annotated_list.append(" ".join(modified_tokens[j1:j2]))
         return annotated_list
@@ -180,6 +181,8 @@ class App():
                 "processed_input" in st.session_state and \
                 (input_text != str(st.session_state.get(f"processed_input", ""))):
                 self.run_llm()
+
+        st.session_state["processed_input"] = input_text
         self.footer()
 
     def footer(self):
