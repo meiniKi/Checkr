@@ -6,6 +6,9 @@ import streamlit as st
 import configparser
 from transformers import AutoTokenizer, T5ForConditionalGeneration
 from contextlib import nullcontext
+from annotated_text import annotated_text
+from difflib import SequenceMatcher
+
 
 class App():
     def __init__(self):
@@ -13,15 +16,19 @@ class App():
         self.config_defaults_path = "checkr_defaults.ini"
         st.session_state["generated_text"] = ""
         st.session_state["action"] = "grammar"
+        st.session_state["should_save"] = False
         self.load_config()
+        st.set_page_config(page_title="Checkr", layout="wide")
 
     def load_config(self, defaults=False):
         parser = configparser.ConfigParser()
         parser.read(self.config_path if not defaults else self.config_defaults_path)
         st.session_state["config"] = {section: dict(parser.items(section)) for section in parser.sections()}
+        if defaults:
+            self.store_config(False)
 
     def __should_save(self):
-        st.session_state.should_save = True
+        st.session_state["should_save"] = True
 
     def __update_to_config_dict(self):
         st.session_state["config"]["LLM"]["action"] = str(st.session_state.get(f"LLM_action"))
@@ -30,9 +37,11 @@ class App():
         st.session_state["config"]["UI"]["show_spinner"] = str(st.session_state.get(f"UI_show_spinner"))
         for k in st.session_state["config"]["PROMPTS"].keys():
             st.session_state["config"]["PROMPTS"][k] = st.session_state.get(f"PROMPTS_{k}")
-
-    def store_config(self):
-        self.__update_to_config_dict()
+            st.session_state["config"]["DIFFS"][k] = str(st.session_state.get(f"DIFFS_{k}"))
+    
+    def store_config(self, from_ui:bool=True):
+        if from_ui:
+            self.__update_to_config_dict()
         parser = configparser.ConfigParser()
         for section in st.session_state["config"].keys():
             parser.add_section(section)
@@ -47,44 +56,63 @@ class App():
         if self.config_path is not None:
             with open(self.config_path, 'w') as f:
                 parser.write(f)
-        st.session_state.should_save = False
+        st.session_state["should_save"] = False
 
 
-    @st.dialog("Update Model & Prompts")
-    def model_prompt_setup(self):       
+    @st.dialog("Update Model & Prompts", width="large")
+    def model_prompt_setup(self):
         st.text_input(
             "Model",
             st.session_state["config"]["LLM"]["model"],
             key=f"LLM_model",
-            on_change=self.__should_save())
+            on_change=self.__should_save)
 
         st.text_input(
             "Max Length",
             st.session_state["config"]["LLM"]["max_length"],
             key=f"LLM_max_length",
-            on_change=self.__should_save())
+            on_change=self.__should_save)
 
         for k, v in st.session_state["config"]["PROMPTS"].items():
             st.text_input(
                 k.title(),
                 v,
                 key=f"PROMPTS_{k}",
-                on_change=self.__should_save())
-            
+                on_change=self.__should_save)
+
+            st.toggle(
+                f"Show Diff for {k}",
+                value=st.session_state["config"]["DIFFS"][k] == "True",
+                key=f"DIFFS_{k}",
+                on_change=self.__should_save)
+
         st.toggle(
             "Show Spinner while generating",
             key="UI_show_spinner",
             value=st.session_state["config"]["UI"]["show_spinner"] == "True",
-            on_change=self.__should_save()
-        )
+            on_change=self.__should_save)
 
-        if st.session_state.should_save:
+        if st.session_state["should_save"]:
             self.store_config()
 
+    def annotate(self, original_txt, new_txt):
+        fg = "#2a2b36"
+        original_tokens = original_txt.strip().split()
+        modified_tokens = new_txt.strip().split()
+        matcher = SequenceMatcher(None, original_tokens, modified_tokens)
+        annotated_list = []
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == 'replace':
+                annotated_list.append((" ".join(modified_tokens[j1:j2]), "", fg))
+            elif tag == 'delete':
+                annotated_list.append(("", ""))
+            elif tag == 'insert':
+                annotated_list.append((" ".join(modified_tokens[j1:j2]), "", fg))
+            else:
+                annotated_list.append(" ".join(modified_tokens[j1:j2]))
+        return annotated_list
+
     def run_llm(self):
-        if st.session_state.get(f"main_input") is None or str(st.session_state.get(f"main_input")).strip() == "":
-            return
-        
         with st.spinner(r'Downloading Model (very slow on first time! ~5-20min) / Processing. Please be patient...') if \
             st.session_state["config"]["UI"]["show_spinner"] == "True" else nullcontext():
             try:
@@ -104,10 +132,13 @@ class App():
                 max_len = 256
             outputs = model.generate(input_ids, max_length=max_len)
             st.session_state["generated_text"] = tokenizer.decode(outputs[0], skip_special_tokens=True)
+            st.session_state["processed_input"] = st.session_state["main_input"]
+            if st.session_state["config"]["DIFFS"][str(st.session_state["action"]).lower()].strip() == "True":
+                annotated_text(*self.annotate(st.session_state["main_input"], st.session_state["generated_text"]))
+            else:
+                st.markdown(st.session_state["generated_text"])
 
-    def run(self):
-        st.set_page_config(page_title="Checkr", layout="wide")
-        
+    def run(self):       
         st.markdown("""<style> .block-container {
                         padding-top:    0.8rem;
                         padding-bottom: 0rem;
@@ -137,22 +168,21 @@ class App():
 
         col_input, col_output = st.columns(2)
         with col_input:
-            st.text_area(
+            input_text = st.text_area(
                 "Input Text",
+                label_visibility="hidden",
                 value="",
                 height=500,
-                key="main_input",
-                on_change=self.run_llm()
+                key="main_input"
             )
-
         with col_output:
-            st.text_area(
-                "Processed Text",
-                value=st.session_state["generated_text"] if st.session_state["generated_text"] else "",
-                height=500,
-                key="main_output"
-            )
+            st.write('<div style="height: 44px;"></div>', unsafe_allow_html=True)
+            if (input_text is not None) and (input_text.strip() != "") and \
+                "processed_input" in st.session_state and \
+                (input_text != str(st.session_state.get(f"processed_input", ""))):
+                self.run_llm()
 
+        st.session_state["processed_input"] = input_text
         self.footer()
 
     def footer(self):
