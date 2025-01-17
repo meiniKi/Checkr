@@ -11,7 +11,7 @@ You can run the application in a Docker container using the provided `docker-com
 Clone the repo.
 
 ```shell
-https://github.com/meiniKi/Checkr.git
+git clone https://github.com/meiniKi/Checkr.git
 ```
 
 > [!IMPORTANT]  
@@ -23,7 +23,7 @@ Create a virtual environment, activate it, and install the requirements.
 
 ```shell
 cd <repo path>
-python3.10 -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
