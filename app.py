@@ -85,14 +85,24 @@ class App():
         if st.session_state.get(f"main_input") is None or str(st.session_state.get(f"main_input")).strip() == "":
             return
         
-        with st.spinner(r'Downloading Model (slow) / Processing. Please be patient...') if \
+        with st.spinner(r'Downloading Model (very slow on first time! ~5-20min) / Processing. Please be patient...') if \
             st.session_state["config"]["UI"]["show_spinner"] == "True" else nullcontext():
-            tokenizer = AutoTokenizer.from_pretrained(st.session_state["config"]["LLM"]["model"])
-            model = T5ForConditionalGeneration.from_pretrained(st.session_state["config"]["LLM"]["model"])
+            try:
+                tokenizer = AutoTokenizer.from_pretrained(st.session_state["config"]["LLM"]["model"])
+                model = T5ForConditionalGeneration.from_pretrained(st.session_state["config"]["LLM"]["model"])
+            except Exception as e:
+                st.error(f"Cannot load model. Check your settings! {e}")
+                return
+            
             input_text = st.session_state["config"]["PROMPTS"][str(st.session_state["action"]).lower()] + \
                             " " + st.session_state.get(f"main_input")
             input_ids = tokenizer(input_text, return_tensors="pt").input_ids
-            outputs = model.generate(input_ids, max_length=int(st.session_state["config"]["LLM"]["max_length"]))
+
+            try:
+                max_len = int(st.session_state["config"]["LLM"]["max_length"])
+            except ValueError:
+                max_len = 256
+            outputs = model.generate(input_ids, max_length=max_len)
             st.session_state["generated_text"] = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
     def run(self):
