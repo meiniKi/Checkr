@@ -22,6 +22,8 @@ class App():
         parser = configparser.ConfigParser()
         parser.read(self.config_path if not defaults else self.config_defaults_path)
         st.session_state["config"] = {section: dict(parser.items(section)) for section in parser.sections()}
+        if defaults:
+            self.store_config(False)
 
     def __should_save(self):
         st.session_state.should_save = True
@@ -35,8 +37,9 @@ class App():
             st.session_state["config"]["PROMPTS"][k] = st.session_state.get(f"PROMPTS_{k}")
             st.session_state["config"]["DIFFS"][k] = str(st.session_state.get(f"DIFFS_{k}"))
     
-    def store_config(self):
-        self.__update_to_config_dict()
+    def store_config(self, from_ui:bool=True):
+        if from_ui:
+            self.__update_to_config_dict()
         parser = configparser.ConfigParser()
         for section in st.session_state["config"].keys():
             parser.add_section(section)
@@ -168,6 +171,7 @@ class App():
         with col_input:
             st.text_area(
                 "Input Text",
+                label_visibility="hidden",
                 value="",
                 height=500,
                 key="main_input",
@@ -175,7 +179,7 @@ class App():
             )
 
         with col_output:
-            st.markdown("")
+            st.write('<div style="height: 44px;"></div>', unsafe_allow_html=True)
             self.annotate(st.session_state["main_input"], st.session_state["generated_text"])
             #st.text_area(
             #    "Processed Text",
