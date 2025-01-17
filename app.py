@@ -6,6 +6,9 @@ import streamlit as st
 import configparser
 from transformers import AutoTokenizer, T5ForConditionalGeneration
 from contextlib import nullcontext
+from annotated_text import annotated_text
+from difflib import SequenceMatcher
+
 
 class App():
     def __init__(self):
@@ -30,7 +33,8 @@ class App():
         st.session_state["config"]["UI"]["show_spinner"] = str(st.session_state.get(f"UI_show_spinner"))
         for k in st.session_state["config"]["PROMPTS"].keys():
             st.session_state["config"]["PROMPTS"][k] = st.session_state.get(f"PROMPTS_{k}")
-
+            st.session_state["config"]["DIFFS"][k] = str(st.session_state.get(f"DIFFS_{k}"))
+    
     def store_config(self):
         self.__update_to_config_dict()
         parser = configparser.ConfigParser()
@@ -70,7 +74,13 @@ class App():
                 v,
                 key=f"PROMPTS_{k}",
                 on_change=self.__should_save())
-            
+
+            st.toggle(
+                f"Show Diff for {k}",
+                value=st.session_state["config"]["DIFFS"][k] == "True",
+                key=f"DIFFS_{k}",
+                on_change=self.__should_save())
+
         st.toggle(
             "Show Spinner while generating",
             key="UI_show_spinner",
@@ -80,6 +90,25 @@ class App():
 
         if st.session_state.should_save:
             self.store_config()
+
+
+    def annotate(self, original_txt, new_txt):
+        original_tokens = original_txt.strip().split()
+        modified_tokens = new_txt.strip().split()
+        matcher = SequenceMatcher(None, original_tokens, modified_tokens)
+        annotated_list = []
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == 'replace':
+                annotated_list.append((" ".join(modified_tokens[j1:j2]), ""))
+            elif tag == 'delete':
+                annotated_list.append(("", ""))
+            elif tag == 'insert':
+                annotated_list.append((" ".join(modified_tokens[j1:j2]), ""))
+            else:
+                annotated_list.append(" ".join(modified_tokens[j1:j2]))
+        return annotated_text(*annotated_list)
+
+
 
     def run_llm(self):
         if st.session_state.get(f"main_input") is None or str(st.session_state.get(f"main_input")).strip() == "":
@@ -104,7 +133,7 @@ class App():
                 max_len = 256
             outputs = model.generate(input_ids, max_length=max_len)
             st.session_state["generated_text"] = tokenizer.decode(outputs[0], skip_special_tokens=True)
-
+        
     def run(self):
         st.set_page_config(page_title="Checkr", layout="wide")
         
@@ -146,12 +175,14 @@ class App():
             )
 
         with col_output:
-            st.text_area(
-                "Processed Text",
-                value=st.session_state["generated_text"] if st.session_state["generated_text"] else "",
-                height=500,
-                key="main_output"
-            )
+            st.markdown("")
+            self.annotate(st.session_state["main_input"], st.session_state["generated_text"])
+            #st.text_area(
+            #    "Processed Text",
+            #    value=st.session_state["generated_text"] if st.session_state["generated_text"] else "",
+            #    height=500,
+            #    key="main_output"
+            #)
 
         self.footer()
 
