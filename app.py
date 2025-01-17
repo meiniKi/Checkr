@@ -96,7 +96,7 @@ class App():
             self.store_config()
 
     def annotate(self, original_txt, new_txt):
-        fg = "#2a2b36"
+        fg = "#283816"
         original_tokens = original_txt.strip().split()
         modified_tokens = new_txt.strip().split()
         matcher = SequenceMatcher(None, original_tokens, modified_tokens)
